@@ -28,9 +28,9 @@ If you wish to use the MPFR library to perform calculations that exceed the IEEE
 
 HVL_MT can be built on Windows using either the [MinGW toolchain](http://www.mingw.org/) or [Microsoft Visual Studio](https://www.visualstudio.com/). The following CMake variables have to be specified manually if you wish to use the MPFR library.
 
-- `XGMP_INCLUDES` - Path to the directory with GMP public headers
+- `GMP_INCLUDES` - Path to the directory with GMP public headers
 - `MPFR_INCLUDES` - Path to the directory with MPFR public headers
-- `XGMP_LIBRARIES` - Path to the directory with built GMP library
+- `GMP_LIBRARIES` - Path to the directory with built GMP library
 - `MPFR_LIBRARIES` - Path to the directory with built MPFR library
 
 Assuming that the path to MinGW executables has been added to your PATH variable and you have `cd`'ed to the directory with HVL_MT source, a sample command might look like the example below. In the example GMP and MPFR are installed in `C:\gmp-bin` and `C:\mpfr-bin`, respectively.
@@ -38,7 +38,7 @@ Assuming that the path to MinGW executables has been added to your PATH variable
 
     md build
     cd build
-    cmake -G "MinGW Makefiles" .. -DXGMP_INCLUDES=c:/gmp-bin/include -MPFR_INCLUDES=c:/mpfr-bin/include -DXGMP_LIBRARIES=c:/gmp-bin/lib -DMPFR_LIBRARIES=c:/mpfr-bin/lib -DCMAKE_BUILD_TYPE=Release
+    cmake -G "MinGW Makefiles" .. -DGMP_INCLUDES=c:/gmp-bin/include -MPFR_INCLUDES=c:/mpfr-bin/include -DGMP_LIBRARIES=c:/gmp-bin/lib -DMPFR_LIBRARIES=c:/mpfr-bin/lib -DCMAKE_BUILD_TYPE=Release
     mingw32-make
 
 **Remark 1:** In order to generate Microsoft Visual Studio solution instead, supply the appropriate value for the `-G` parameter. Please refer to CMake documentation for details.
