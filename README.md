@@ -4,12 +4,14 @@ HVL_MT
 Introduction
 ---
 
-HVL_MT library can calculate values of Haaroff - van der Linde function and its derivatives by all parameters. The library makes use of [MPFR library](http://www.mpfr.org/) to calculate intermediate results with arbitrary precision. If a continuous range of values is needed, HVL_MT takes advantage of multithreaded processing to speed up the computation.
+HVL_MT library can calculate values of Haaroff - van der Linde function and its derivatives by all parameters. The library can optionally make use of [MPFR library](http://www.mpfr.org/) to calculate intermediate results with arbitrary precision. If a continuous range of values is needed, HVL_MT takes advantage of multithreaded processing to speed up the computation. If multiple HVL parameters are to be evaluated for a given `x`, HVL_MT provides a set of `_prepared` functions that precalculate and reuse the terms common to all expressions.
 
 Building
 ---
 
-HVL_MT uses [CMake build system](https://cmake.org/). Note that HVL_MT employs arbitrary-precision library MPFR. To build HVL_MT, MPFR library (and it's dependence [GMP library](https://gmplib.org/)) must be installed including the development files.
+HVL_MT uses [CMake build system](https://cmake.org/). In order to build HVL_MT with MPFR support, MPFR library (and it's dependence [GMP library](https://gmplib.org/)) must be installed including the development files.
+
+If you wish to use the MPFR library to perform calculations that exceed the IEEE754 `double` precision, supply addtional `-DUSE_MPFR=ON` parameter to `cmake`.
 
 ### Linux/UNIX
 
@@ -24,7 +26,7 @@ HVL_MT uses [CMake build system](https://cmake.org/). Note that HVL_MT employs a
 
 ### Windows
 
-HVL_MT can be built on Windows using the [MinGW toolchain](http://www.mingw.org/). Additionally, the following CMake variables have to be specified manually.
+HVL_MT can be built on Windows using either the [MinGW toolchain](http://www.mingw.org/) or [Microsoft Visual Studio](https://www.visualstudio.com/). The following CMake variables have to be specified manually if you wish to use the MPFR library.
 
 - `XGMP_INCLUDES` - Path to the directory with GMP public headers
 - `MPFR_INCLUDES` - Path to the directory with MPFR public headers
@@ -39,7 +41,11 @@ Assuming that the path to MinGW executables has been added to your PATH variable
     cmake -G "MinGW Makefiles" .. -DXGMP_INCLUDES=c:/gmp-bin/include -MPFR_INCLUDES=c:/mpfr-bin/include -DXGMP_LIBRARIES=c:/gmp-bin/lib -DMPFR_LIBRARIES=c:/mpfr-bin/lib -DCMAKE_BUILD_TYPE=Release
     mingw32-make
 
-**Remark:** While it is possible to build HVL_MT with Microsoft Visual Studio and appropriate GMP and MPFR builds, doing so is not recommended by the developers of HVL_MT library.
+**Remark 1:** In order to generate Microsoft Visual Studio solution instead, supply the appropriate value for the `-G` parameter. Please refer to CMake documentation for details.
+
+**Remark 2:** If your MinGW toolchain uses Win32 threads instead of pthreads, supply `-DWIN32_THREADS=ON` parameter to `cmake`.
+
+**Remark 3:**  If you intend to build HVL_MT with Microsoft Visual Studio and MPFR support, you might want to use the binary compable GMP-fork [MPIR](http://www.mpir.org/) as the mainline GMP is problematic to build with MSVS.
 
 Licensing
 ---
