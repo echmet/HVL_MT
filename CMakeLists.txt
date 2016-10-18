@@ -1,61 +1,86 @@
 cmake_minimum_required(VERSION 2.6)
 
-project(hvl_mt)
+project(libhvl_mt)
+
+option(WIN32_THREADS "Use Win32 threads instead of pthreads" OFF)
+option(USE_MPFR "Use MPFR high precision library" OFF)
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR})
-add_definitions("-Wall -Wextra -mmmx -msse -msse2 -std=gnu++11")
+add_definitions("-DLIBHVL_DLLBUILD")
 
 set(hvl_mt_SRCS
-    hvl.cpp
-    hvl_dll.cpp)
+    hvl.cpp)
 
 if(UNIX)
-  add_definitions("-DECHMET_MATH_HVL_PLATFORM_UNIX")
-  find_package(MPFR REQUIRED)
-  include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${MPFR_INCLUDES})
-  set(LINK_HIPREC
-      ${MPFR_LIBRARIES})
-elseif(MINGW)
-  add_definitions("-DECHMET_MATH_HVL_PLATFORM_WIN -DECHMET_MATH_HVL_MINGW32")
-  include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}
-	${XGMP_INCLUDES}
-    ${MPFR_INCLUDES})
-  set(hvl_mt_SRCS
-      ${hvl_mt_SRCS}
-      dllmain.cpp)
-  find_library(GMPLIB
-               gmp
-	           ${XGMP_LIBRARIES})
-  find_library(MPFRLIB
-               mpfr
-	           ${MPFR_LIBRARIES})
-  set(LINK_HIPREC ${MPFRLIB} ${GMPLIB})
+  add_definitions("-Wall -Wextra -mmmx -msse -msse2 -std=gnu++11 -DLIBHVL_PLATFORM_UNIX")
+
+  if(USE_MPFR)
+    find_package(MPFR REQUIRED)
+    add_definitions("-DLIBHVL_USE_MPFR")
+    include_directories(
+      ${CMAKE_CURRENT_SOURCE_DIR}
+      ${MPFR_INCLUDES})
+    set(LINK_HIPREC
+        ${MPFR_LIBRARIES})
+  else()
+    set(LINK_HIPREC "")
+  endif()
+
+  set(LINK_PTHREAD "pthread")
 elseif(WIN32)
-  add_definitions("-DECHMET_MATH_HVL_PLATFORM_WIN")
-  include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}
-	${XGMP_INCLUDES}
-    ${MPFR_INCLUDES})
+  add_definitions("-DLIBHVL_PLATFORM_WIN32")
+
   set(hvl_mt_SRCS
       ${hvl_mt_SRCS}
       dllmain.cpp)
-  find_library(GMPLIB
-               gmp
-	           ${XGMP_LIBRARIES})
-  find_library(MPFRLIB
-               mpfr
-	           ${MPFR_LIBRARIES})
-  set(LINK_HIPREC ${MPFRLIB} ${GMPLIB})
+
+  if(USE_MPFR)
+    add_definitions("-DLIBHVL_USE_MPFR")
+    include_directories(
+      ${CMAKE_CURRENT_SOURCE_DIR}
+      ${GMP_INCLUDES}
+      ${MPFR_INCLUDES})
+    find_library(GMPLIB
+                 gmp
+                 ${GMP_LIBRARIES})
+    find_library(MPFRLIB
+                 mpfr
+	             ${MPFR_LIBRARIES})
+    set(LINK_HIPREC ${MPFRLIB} ${GMPLIB})
+  else()
+    set(LINK_HIPREC "")
+  endif()
+
+  if(MSVC)
+    add_definitions("-DLIBHVL_COMPILER_MSVC -DLIBHVL_THREADING_WIN32")
+  elseif(MINGW)
+    add_definitions("-Wall -Wextra -mmmx -msse -msse2 -std=gnu++11 -DLIBHVL_COMPILER_MINGW")
+	if (WIN32_THREADS)
+	  add_definitions("-DLIBHVL_THREADING_WIN32")
+	  set(LINK_PTHREAD "")
+	else()
+	  add_definitions("-DLIBHVL_THREADING_PTHREAD")
+	  set(LINK_PTHREAD "pthread")
+	endif()
+  elseif(MSYS)
+    add_definitions("-Wall -Wextra -mmmx -msse -msse2 -std=gnu++11 -DLIBHVL_COMPILER_MSYS")
+	if (WIN32_THREADS)
+	  add_definitions("-DLIBHVL_THREADING_WIN32")
+	  set(LINK_PTHREAD "")
+	else()
+	  add_definitions("-DLIBHVL_THREADING_PTHREAD")
+	  set(LINK_PTHREAD "pthread")
+	endif()
+  else()
+    message(FATAL_ERROR "Compiler not recognized or not supported")
+  endif()
 else()
-  message(FATAL_ERROR "Platform not recognized")
+  message(FATAL_ERROR "Platform not recognized or not supported")
 endif()
   
-add_library(hvl_mt SHARED ${hvl_mt_SRCS})
-target_link_libraries(hvl_mt PRIVATE ${LINK_HIPREC})
-set_target_properties(hvl_mt
+add_library(libhvl_mt SHARED ${hvl_mt_SRCS})
+target_link_libraries(libhvl_mt PRIVATE ${LINK_HIPREC} ${LINK_PTHREAD})
+set_target_properties(libhvl_mt
                       PROPERTIES PREFIX ""
-                                 VERSION 1.0
-                                 SOVERSION 1.0)
+                                 VERSION 2.0
+                                 SOVERSION 2.0)
