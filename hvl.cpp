@@ -508,7 +508,7 @@ DWORD WINAPI WorkerFunc(void *arg)
 void *WorkerFunc(void *arg)
 #endif // LIBHVL_THREADING_
 {
-	ThreadParams *tp = (ThreadParams *)arg;
+	const ThreadParams *tp = static_cast<const ThreadParams *>(arg);
 	double x = tp->from;
 	HVL_Pair *buf = tp->buffer;
 
