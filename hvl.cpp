@@ -570,6 +570,9 @@ bool LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double from, d
 	#error "No threading model has been specified"
 #endif // LIBHVL_THREADING_
 	const size_t count = (size_t)floor(((to - from) / step) + 0.5);
+	if (count < 1)
+		return false;
+
 	const size_t numThreads = GetNumThreads(count);
 	const size_t itersPerThread = count / numThreads;
 
