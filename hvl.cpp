@@ -453,12 +453,7 @@ HVL_Range * HVL_alloc_range(const size_t count)
 	return pv;
 }
 
-/*
- * @brief Returns the number of threads to use for calculation
- *
- * @return Number of threads to use for calculation
- */
-size_t GetNumThreads()
+size_t GetNumCPUs()
 {
 #ifdef LIBHVL_PLATFORM_WIN32
 	SYSTEM_INFO sysinfo;
@@ -468,6 +463,28 @@ size_t GetNumThreads()
 	int cpus = get_nprocs();
 	return cpus > 0 ? cpus : 1;
 #endif //HVL_THREADING_
+}
+
+/*
+ * @brief Returns the number of threads to use for calculation
+ *
+ * @return Number of threads to use for calculation
+ */
+size_t GetNumThreads(const size_t arraySize)
+{
+#ifdef LIBHVL_USE_CPP17
+	const int cacheLineSize = std::hardware_destructive_interference_size;
+#else
+	const int cacheLineSize = 64; /* Assume 64-byte L1 cache line size */
+#endif //LIBHVL_USE_CPP17
+	const size_t numCPU = GetNumCPUs();
+	const size_t maxChunks = arraySize * sizeof(double) / cacheLineSize;
+
+	if (maxChunks < 1)
+		return 1;
+	if (maxChunks < numCPU)
+		return maxChunks;
+	return numCPU;
 }
 
 #ifdef LIBHVL_THREADING_PTHREAD
@@ -552,18 +569,18 @@ bool LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double from, d
 #else
 	#error "No threading model has been specified"
 #endif // LIBHVL_THREADING_
-	size_t numCPU = GetNumThreads();
 	size_t count = (size_t)floor(((to - from) / step) + 0.5);
-	size_t itersPerThread = count / numCPU;
+	size_t numThreads = GetNumThreads(count);
+	size_t itersPerThread = count / numThreads;
 
 	try {
-		threads = new HVL_THREAD[numCPU];
+		threads = new HVL_THREAD[numThreads];
 	} catch (std::bad_alloc&) {
 		return false;
 	}
 #ifdef LIBHVL_THREADING_WIN32
 	try {
-		threadIDs = new DWORD[numCPU];
+		threadIDs = new DWORD[numThreads];
 	} catch (std::bad_alloc&) {
 		delete[] threads;
 		return false;
@@ -571,7 +588,7 @@ bool LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double from, d
 #endif // LIBHVL_THREADING_WIN32
 
 	try {
-		tps = new ThreadParams[numCPU];
+		tps = new ThreadParams[numThreads];
 	} catch (std::bad_alloc&) {
 		bret = false;
 		goto out;
@@ -585,7 +602,7 @@ bool LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double from, d
 
 	buffer = (*pv)->p;
 
-	for (idx = 0; idx < numCPU; idx++) {
+	for (idx = 0; idx < numThreads; idx++) {
 		tps[idx].buffer = buffer + (itersPerThread * idx);
 		tps[idx].ctx = ctx;
 		tps[idx].from = from + (idx * step * itersPerThread);
@@ -598,10 +615,10 @@ bool LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double from, d
 		tps[idx].calcfun = calcfun;
 	}
 	/* Make an adjustment for the last thread */
-	tps[numCPU - 1].iters = count - (itersPerThread * (numCPU - 1)); /* Make sure that we do not leave out anything due to rounding */
+	tps[numThreads - 1].iters = count - (itersPerThread * (numThreads - 1)); /* Make sure that we do not leave out anything due to rounding */
 
 	/* Launch threads */
-	for (idx = 0; idx < numCPU; idx++) {
+	for (idx = 0; idx < numThreads; idx++) {
 	#ifdef LIBHVL_THREADING_WIN32
 		threads[idx] = CreateThread(NULL, 0, WorkerFunc, &tps[idx], 0, &threadIDs[idx]);
 		if (threads[idx] == 0)
@@ -614,11 +631,11 @@ bool LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double from, d
 	}
 
 #ifdef LIBHVL_THREADING_WIN32
-	WaitForMultipleObjects(numCPU, threads, TRUE, INFINITE);
-	for (idx = 0; idx < numCPU; idx++)
+	WaitForMultipleObjects(numThreads, threads, TRUE, INFINITE);
+	for (idx = 0; idx < numThreads; idx++)
 		CloseHandle(threads[idx]);
 #elif defined LIBHVL_THREADING_PTHREAD
-	for (size_t idx = 0; idx < numCPU; idx++)
+	for (size_t idx = 0; idx < numThreads; idx++)
 		pthread_join(threads[idx], NULL);
 #endif // LIBHVL_THREADING_
 	bret = true;
