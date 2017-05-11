@@ -9,8 +9,11 @@ option(USE_MPFR "Use MPFR high precision library" OFF)
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR})
 add_definitions("-DLIBHVL_DLLBUILD")
 
+set(LIBHVL_INCLUDES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include")
 set(hvl_mt_SRCS
-    hvl.cpp)
+    src/hvl.cpp)
 
 if(UNIX)
   add_definitions("-Wall -Wextra -mmmx -msse -msse2 -fvisibility=hidden -DLIBHVL_PLATFORM_UNIX")
@@ -19,16 +22,18 @@ if(UNIX)
     find_package(MPFR REQUIRED)
     add_definitions("-DLIBHVL_USE_MPFR")
     include_directories(
-      ${CMAKE_CURRENT_SOURCE_DIR}
+      ${LIBHVL_INCLUDES}
       ${MPFR_INCLUDES})
     set(LINK_HIPREC
         ${MPFR_LIBRARIES})
   else()
+    include_directories(
+      ${LIBHVL_INCLUDES})
     set(LINK_HIPREC "")
   endif()
 
   if(USE_CPP17)
-   add_definitions("-std=gnu++1z -DLIBHVL_USE_CPP17")
+    add_definitions("-std=gnu++1z -DLIBHVL_USE_CPP17")
   else()
     add_definitions("-std=gnu++11")
   endif()
@@ -39,12 +44,12 @@ elseif(WIN32)
 
   set(hvl_mt_SRCS
       ${hvl_mt_SRCS}
-      dllmain.cpp)
+      src/dllmain.cpp)
 
   if(USE_MPFR)
     add_definitions("-DLIBHVL_USE_MPFR")
     include_directories(
-      ${CMAKE_CURRENT_SOURCE_DIR}
+      ${LIBHVL_INCLUDES}
       ${GMP_INCLUDES}
       ${MPFR_INCLUDES})
     find_library(GMPLIB
@@ -55,6 +60,8 @@ elseif(WIN32)
 	             ${MPFR_LIBRARIES})
     set(LINK_HIPREC ${MPFRLIB} ${GMPLIB})
   else()
+    include_directories(
+      ${LIBHVL_INCLUDES})
     set(LINK_HIPREC "")
   endif()
 
