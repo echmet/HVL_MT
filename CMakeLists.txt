@@ -104,9 +104,12 @@ else()
   message(FATAL_ERROR "Platform not recognized or not supported")
 endif()
   
-add_library(libhvl_mt SHARED ${hvl_mt_SRCS})
-target_link_libraries(libhvl_mt PRIVATE ${LINK_HIPREC} ${LINK_PTHREAD})
-set_target_properties(libhvl_mt
-                      PROPERTIES PREFIX ""
-                                 VERSION 2.0
-                                 SOVERSION 2.0)
+add_library(hvl_mt SHARED ${hvl_mt_SRCS})
+target_link_libraries(hvl_mt PRIVATE ${LINK_HIPREC} ${LINK_PTHREAD})
+set_target_properties(hvl_mt
+                      PROPERTIES VERSION 2.0
+                                 SOVERSION 2.0
+                                 PUBLIC_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/include/hvl.h")
+install(TARGETS hvl_mt
+        LIBRARY DESTINATION lib
+        PUBLIC_HEADER DESTINATION include)
