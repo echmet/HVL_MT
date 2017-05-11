@@ -57,7 +57,7 @@ elseif(WIN32)
                  ${GMP_LIBRARIES})
     find_library(MPFRLIB
                  mpfr
-	             ${MPFR_LIBRARIES})
+                 ${MPFR_LIBRARIES})
     set(LINK_HIPREC ${MPFRLIB} ${GMPLIB})
   else()
     include_directories(
@@ -103,7 +103,7 @@ elseif(WIN32)
 else()
   message(FATAL_ERROR "Platform not recognized or not supported")
 endif()
-  
+
 add_library(hvl_mt SHARED ${hvl_mt_SRCS})
 target_link_libraries(hvl_mt PRIVATE ${LINK_HIPREC} ${LINK_PTHREAD})
 set_target_properties(hvl_mt
