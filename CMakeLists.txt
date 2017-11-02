@@ -106,16 +106,14 @@ else()
 endif()
 
 include_directories(${INCLUDE_DIRECTORIES} ${CMAKE_CURRENT_BINARY_DIR})
-CONFIGURE_FILE("${CMAKE_CURRENT_SOURCE_DIR}/config.h.in" "${CMAKE_CURRENT_BINARY_DIR}/hvl_config.h")
+CONFIGURE_FILE("${CMAKE_CURRENT_SOURCE_DIR}/include/hvl.h.in" "${CMAKE_CURRENT_BINARY_DIR}/hvl.h")
 
 add_library(hvl_mt SHARED ${hvl_mt_SRCS})
 target_link_libraries(hvl_mt PRIVATE ${LINK_HIPREC} ${LINK_PTHREAD})
 set_target_properties(hvl_mt
                       PROPERTIES VERSION 2.0
                                  SOVERSION 2.0
-                                 PUBLIC_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/include/hvl.h")
+				 PUBLIC_HEADER "${CMAKE_CURRENT_BINARY_DIR}/hvl.h")
 install(TARGETS hvl_mt
         LIBRARY DESTINATION lib
         PUBLIC_HEADER DESTINATION include)
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/hvl_config.h"
-        DESTINATION include/)

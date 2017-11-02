@@ -1,7 +1,8 @@
 #ifndef HVL_H
 #define HVL_H
 
-#include <hvl_config.h>
+#cmakedefine LIBHVL_PLATFORM_WIN32
+#cmakedefine LIBHVL_PLATFORM_UNIX
 
 #ifdef __cplusplus
 	#include <cstddef>
