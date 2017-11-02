@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 2.8.12)
 
 project(libhvl_mt)
 
@@ -16,7 +16,8 @@ set(hvl_mt_SRCS
     src/hvl.cpp)
 
 if(UNIX)
-  add_definitions("-Wall -Wextra -mmmx -msse -msse2 -fvisibility=hidden -DLIBHVL_PLATFORM_UNIX")
+  add_definitions("-Wall -Wextra -mmmx -msse -msse2 -fvisibility=hidden")
+  set("LIBHVL_PLATFORM_UNIX" "1")
 
   if(USE_MPFR)
     find_package(MPFR REQUIRED)
@@ -40,7 +41,7 @@ if(UNIX)
 
   set(LINK_PTHREAD "pthread")
 elseif(WIN32)
-  add_definitions("-DLIBHVL_PLATFORM_WIN32")
+	set("LIBHVL_PLATFORM_WIN32" "1")
 
   set(hvl_mt_SRCS
       ${hvl_mt_SRCS}
@@ -104,6 +105,9 @@ else()
   message(FATAL_ERROR "Platform not recognized or not supported")
 endif()
 
+include_directories(${INCLUDE_DIRECTORIES} ${CMAKE_CURRENT_BINARY_DIR})
+CONFIGURE_FILE("${CMAKE_CURRENT_SOURCE_DIR}/config.h.in" "${CMAKE_CURRENT_BINARY_DIR}/hvl_config.h")
+
 add_library(hvl_mt SHARED ${hvl_mt_SRCS})
 target_link_libraries(hvl_mt PRIVATE ${LINK_HIPREC} ${LINK_PTHREAD})
 set_target_properties(hvl_mt
@@ -113,3 +117,5 @@ set_target_properties(hvl_mt
 install(TARGETS hvl_mt
         LIBRARY DESTINATION lib
         PUBLIC_HEADER DESTINATION include)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/hvl_config.h"
+        DESTINATION include/)

@@ -1,6 +1,8 @@
 #ifndef HVL_H
 #define HVL_H
 
+#include <hvl_config.h>
+
 #ifdef __cplusplus
 	#include <cstddef>
 #else
