@@ -732,6 +732,12 @@ HVL_free_range(HVL_Range *r)
 	delete r;
 }
 
+LIBHVL_DLLEXPORT void LIBHVL_DLLCALL
+HVL_free_threadlocal_cache()
+{
+	mpfr_free_cache();
+}
+
 /*
  * @brief Creates HVL calculation context with the requested precision. Of an old context is passed as the input, it is free'd before a new one is set
  *

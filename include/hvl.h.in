@@ -69,6 +69,7 @@ typedef enum HVL_RetCode {
 
 LIBHVL_DLLEXPORT void LIBHVL_DLLCALL HVL_free_context(HVL_Context *ctx);
 LIBHVL_DLLEXPORT void LIBHVL_DLLCALL HVL_free_prepared(HVL_Prepared *prep);
+LIBHVL_DLLEXPORT void LIBHVL_DLLCALL HVL_free_threadlocal_cache();
 LIBHVL_DLLEXPORT void LIBHVL_DLLCALL HVL_free_range(HVL_Range *r);
 LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_make_context(HVL_Context **ctx, const int prec);
 LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_prepare(HVL_Prepared **prep, const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3);
