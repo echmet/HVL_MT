@@ -735,7 +735,9 @@ HVL_free_range(HVL_Range *r)
 LIBHVL_DLLEXPORT void LIBHVL_DLLCALL
 HVL_free_threadlocal_cache()
 {
+#ifdef LIBHVL_USE_MPFR
 	mpfr_free_cache();
+#endif // LIBHVL_USE_MPFR
 }
 
 /*
