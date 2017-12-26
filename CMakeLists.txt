@@ -114,6 +114,12 @@ set_target_properties(hvl_mt
                       PROPERTIES VERSION 2.0
                                  SOVERSION 2.0
 				 PUBLIC_HEADER "${CMAKE_CURRENT_BINARY_DIR}/hvl.h")
-install(TARGETS hvl_mt
-        LIBRARY DESTINATION lib
-        PUBLIC_HEADER DESTINATION include)
+if (WIN32)
+  install(TARGETS hvl_mt
+          RUNTIME DESTINATION lib
+          PUBLIC_HEADER DESTINATION include)
+else()
+  install(TARGETS hvl_mt
+          LIBRARY DESTINATION lib
+          PUBLIC_HEADER DESTINATION include)
+endif ()
