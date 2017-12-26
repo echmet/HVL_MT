@@ -16,8 +16,8 @@ set(hvl_mt_SRCS
     src/hvl.cpp)
 
 if(UNIX)
-  add_definitions("-Wall -Wextra -mmmx -msse -msse2 -fvisibility=hidden")
   set("LIBHVL_PLATFORM_UNIX" "1")
+  add_definitions("-Wall -Wextra -mmmx -msse -msse2 -fvisibility=hidden")
 
   if(USE_MPFR)
     find_package(MPFR REQUIRED)
@@ -41,8 +41,7 @@ if(UNIX)
 
   set(LINK_PTHREAD "pthread")
 elseif(WIN32)
-	set("LIBHVL_PLATFORM_WIN32" "1")
-
+  set("LIBHVL_PLATFORM_WIN32" "1")
   set(hvl_mt_SRCS
       ${hvl_mt_SRCS}
       src/dllmain.cpp)
