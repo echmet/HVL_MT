@@ -51,15 +51,12 @@ elseif(WIN32)
     add_definitions("-DLIBHVL_USE_MPFR")
     include_directories(
       ${LIBHVL_INCLUDES}
-      ${GMP_INCLUDES}
-      ${MPFR_INCLUDES})
-    find_library(GMPLIB
-                 gmp
-                 ${GMP_LIBRARIES})
-    find_library(MPFRLIB
-                 mpfr
-                 ${MPFR_LIBRARIES})
-    set(LINK_HIPREC ${MPFRLIB} ${GMPLIB})
+      ${GMP_INCLUDE_DIR}
+      ${MPFR_INCLUDE_DIR})
+    set(LINK_HIPREC ${LINK_HIPREC}
+        ${GMP_LIBRARY_BIN})
+    set(LINK_HIPREC ${LINK_HIPREC}
+        ${MPFR_LIBRARY_BIN})
   else()
     include_directories(
       ${LIBHVL_INCLUDES})
