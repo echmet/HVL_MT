@@ -113,6 +113,7 @@ set_target_properties(hvl_mt
 if (WIN32)
   install(TARGETS hvl_mt
           RUNTIME DESTINATION lib
+          ARCHIVE DESTINATION lib
           PUBLIC_HEADER DESTINATION include)
 else()
   install(TARGETS hvl_mt
