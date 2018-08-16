@@ -76,18 +76,32 @@ inline hvl_float Sqrt(const hvl_float &x)
 #endif
 }
 
-#if defined(LIBHVL_USE_MPFR) && defined(LIBHVL_THREADING_PTHREAD)
+#ifdef LIBHVL_USE_MPFR
 
 #include <csignal>
 #include <csetjmp>
 #include <mutex>
-#include <unistd.h>
 #include <time.h>
 
+#ifdef _WIN32
+#define THREAD_SLEEP(n) Sleep(n)
+#else
+#include <unistd.h>
+#define THREAD_SLEEP(n) sleep(n)
+#endif // _WIN32
+
+
 typedef void (*sighandler_t)(int);
+#ifdef LIBHVL_THREADING_PTHREAD
+typedef pthread_t thread_id_t;
+#define CURRENT_THREAD_ID pthread_self
+#elif defined LIBHVL_THREADING_WIN32
+typedef DWORD thread_id_t;
+#define CURRENT_THREAD_ID GetCurrentThreadId
+#endif // LIBHVL_THREADING_
 
 static jmp_buf env;
-static pthread_t mpfr_failure_parent_thread_id;
+static thread_id_t mpfr_failure_parent_thread_id;
 static std::mutex mpfr_assert_handler_mtx;
 static sighandler_t mpfr_prev_handler;
 static volatile bool mpfr_assert_triggered;
@@ -97,11 +111,11 @@ void mpfr_assertion_failed_handler(int)
 {
 	mpfr_assert_handler_mtx.lock();
 
-	if (mpfr_failure_parent_thread_id != pthread_self()) {
+	if (mpfr_failure_parent_thread_id != CURRENT_THREAD_ID()) {
 		mpfr_assert_triggered = true;
 		mpfr_assert_handler_mtx.unlock();
 		for (;;)
-			sleep(1);
+			THREAD_SLEEP(1);
 	}
 
 	if (mpfr_assert_triggered) {
@@ -121,7 +135,7 @@ void mpfr_assertion_failed_handler(int)
 
 #define MPFR_TRY_BEG \
 	if (!setjmp(env)) { \
-		mpfr_failure_parent_thread_id = pthread_self(); \
+		mpfr_failure_parent_thread_id = CURRENT_THREAD_ID(); \
 		mpfr_prev_handler = std::signal(SIGABRT, mpfr_assertion_failed_handler); \
 		mpfr_assert_triggered = false;
 
@@ -581,6 +595,10 @@ DWORD WINAPI WorkerFunc(void *arg)
 void *WorkerFunc(void *arg)
 #endif // LIBHVL_THREADING_
 {
+#ifdef _WIN32
+	auto orig_handler = std::signal(SIGABRT, mpfr_assertion_failed_handler);
+#endif
+
 	const ThreadParams *tp = static_cast<const ThreadParams *>(arg);
 	double x = tp->from;
 	HVL_Pair *buf = tp->buffer;
@@ -609,6 +627,10 @@ void *WorkerFunc(void *arg)
 #ifdef LIBHVL_THREADING_PTHREAD
 	pthread_cleanup_pop(0);
 #endif // LIBHVL_THREADING_PTHREAD
+
+#ifdef _WIN32
+	std::signal(SIGABRT, orig_handler);
+#endif
 
 	return 0;
 }
@@ -709,9 +731,19 @@ HVL_RetCode LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double 
 	}
 
 #ifdef LIBHVL_THREADING_WIN32
-	WaitForMultipleObjects(numThreads, threads, TRUE, INFINITE);
-	for (idx = 0; idx < numThreads; idx++)
-		CloseHandle(threads[idx]);
+	{
+		size_t thrIdx = 0;
+
+		while (thrIdx < numThreads) {
+			auto wRet = WaitForSingleObject(threads[thrIdx], 1000);
+			if (mpfr_assert_triggered)
+				goto err_unwind;
+			if (wRet == WAIT_OBJECT_0) {
+				CloseHandle(threads[thrIdx]);
+				thrIdx++;
+			}
+		}
+	}
 #elif defined LIBHVL_THREADING_PTHREAD
 	{
 		struct timespec ts;
