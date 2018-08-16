@@ -64,7 +64,9 @@ typedef struct HVL_Range {
 typedef enum HVL_RetCode {
 	HVL_OK,
 	HVL_E_NO_MEMORY,
-	HVL_E_INVALID_ARG
+	HVL_E_INVALID_ARG,
+	HVL_E_INTERNAL,
+	HVL_E_MPFR_ASSERT
 } HVL_RetCode;
 
 LIBHVL_DLLEXPORT void LIBHVL_DLLCALL HVL_free_context(HVL_Context *ctx);
@@ -73,24 +75,24 @@ LIBHVL_DLLEXPORT void LIBHVL_DLLCALL HVL_free_threadlocal_cache();
 LIBHVL_DLLEXPORT void LIBHVL_DLLCALL HVL_free_range(HVL_Range *r);
 LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_make_context(HVL_Context **ctx, const int prec);
 LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_prepare(HVL_Prepared **prep, const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3);
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL HVL_t_prepared(const HVL_Prepared *prep);
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL HVL_dx_prepared(const HVL_Prepared *prep);
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL HVL_da0_prepared(const HVL_Prepared *prep);
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL HVL_da1_prepared(const HVL_Prepared *prep);
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL HVL_da2_prepared(const HVL_Prepared *prep);
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL HVL_da3_prepared(const HVL_Prepared *prep);
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL HVL_t(const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3);
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL HVL_dx(const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3);
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL HVL_da0(const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3);
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL HVL_da1(const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3);
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL HVL_da2(const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3);
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL HVL_da3(const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3);
-LIBHVL_DLLEXPORT HVL_Range * LIBHVL_DLLCALL HVL_t_range(const HVL_Context *ctx, const double from, const double to, const double step, const double a0, const double a1, const double a2, const double a3);
-LIBHVL_DLLEXPORT HVL_Range * LIBHVL_DLLCALL HVL_dx_range(const HVL_Context *ctx, const double from, const double to, const double step, const double a0, const double a1, const double a2, const double a3);
-LIBHVL_DLLEXPORT HVL_Range * LIBHVL_DLLCALL HVL_da0_range(const HVL_Context *ctx, const double from, const double to, const double step, const double a0, const double a1, const double a2, const double a3);
-LIBHVL_DLLEXPORT HVL_Range * LIBHVL_DLLCALL HVL_da1_range(const HVL_Context *ctx, const double from, const double to, const double step, const double a0, const double a1, const double a2, const double a3);
-LIBHVL_DLLEXPORT HVL_Range * LIBHVL_DLLCALL HVL_da2_range(const HVL_Context *ctx, const double from, const double to, const double step, const double a0, const double a1, const double a2, const double a3);
-LIBHVL_DLLEXPORT HVL_Range * LIBHVL_DLLCALL HVL_da3_range(const HVL_Context *ctx, const double from, const double to, const double step, const double a0, const double a1, const double a2, const double a3);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_t_prepared(double *t, const HVL_Prepared *prep);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_dx_prepared(double *dx, const HVL_Prepared *prep);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_da0_prepared(double *da0, const HVL_Prepared *prep);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_da1_prepared(double *da1, const HVL_Prepared *prep);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_da2_prepared(double *da2, const HVL_Prepared *prep);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_da3_prepared(double *da3, const HVL_Prepared *prep);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_t(double *t, const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_dx(double *dx, const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_da0(double *da0, const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_da1(double *da1, const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_da2(double *da2, const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_da3(double *da3, const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_t_range(HVL_Range **rng, const HVL_Context *ctx, const double from, const double to, const double step, const double a0, const double a1, const double a2, const double a3);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_dx_range(HVL_Range **rng, const HVL_Context *ctx, const double from, const double to, const double step, const double a0, const double a1, const double a2, const double a3);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_da0_range(HVL_Range **rng, const HVL_Context *ctx, const double from, const double to, const double step, const double a0, const double a1, const double a2, const double a3);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_da1_range(HVL_Range **rng, const HVL_Context *ctx, const double from, const double to, const double step, const double a0, const double a1, const double a2, const double a3);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_da2_range(HVL_Range **rng, const HVL_Context *ctx, const double from, const double to, const double step, const double a0, const double a1, const double a2, const double a3);
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL HVL_da3_range(HVL_Range **rng, const HVL_Context *ctx, const double from, const double to, const double step, const double a0, const double a1, const double a2, const double a3);
 
 #ifdef __cplusplus
 }

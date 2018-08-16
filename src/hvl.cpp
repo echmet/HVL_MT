@@ -76,6 +76,75 @@ inline hvl_float Sqrt(const hvl_float &x)
 #endif
 }
 
+#if defined(LIBHVL_USE_MPFR) && defined(LIBHVL_THREADING_PTHREAD)
+
+#include <csignal>
+#include <csetjmp>
+#include <mutex>
+#include <unistd.h>
+#include <time.h>
+
+typedef void (*sighandler_t)(int);
+
+static jmp_buf env;
+static pthread_t mpfr_failure_parent_thread_id;
+static std::mutex mpfr_assert_handler_mtx;
+static sighandler_t mpfr_prev_handler;
+static volatile bool mpfr_assert_triggered;
+
+static
+void mpfr_assertion_failed_handler(int)
+{
+	mpfr_assert_handler_mtx.lock();
+
+	if (mpfr_failure_parent_thread_id != pthread_self()) {
+		mpfr_assert_triggered = true;
+		mpfr_assert_handler_mtx.unlock();
+		for (;;)
+			sleep(1);
+	}
+
+	if (mpfr_assert_triggered) {
+		/* This is a second call to this handler from the main thread.
+		 * Assume that the caller wants to abort();
+		 */
+		mpfr_assert_handler_mtx.unlock();
+		return;
+	}
+
+
+	mpfr_assert_triggered = true;
+	mpfr_assert_handler_mtx.unlock();
+
+	longjmp(env, 1);
+}
+
+#define MPFR_TRY_BEG \
+	if (!setjmp(env)) { \
+		mpfr_failure_parent_thread_id = pthread_self(); \
+		mpfr_prev_handler = std::signal(SIGABRT, mpfr_assertion_failed_handler); \
+		mpfr_assert_triggered = false;
+
+#define MPFR_TRY_END \
+		std::signal(SIGABRT, mpfr_prev_handler); \
+	}
+
+#define MPFR_CATCH_BEG \
+	else {
+#define MPFR_CATCH_END \
+	}
+
+#else
+
+#define MPFR_TRY_BEG
+#define MPFR_TRY_END
+#define MPFR_CATCH_BEG
+#define MPFR_CATCH_END
+
+static bool mpfr_assert_triggered{false};
+
+#endif
+
 /** Internal data types */
 struct HVL_Context {
 	explicit HVL_Context(const int prec_bits) :
@@ -429,6 +498,7 @@ typedef struct {
  *
  * @return Pointer to struct HVLInternalValues
  */
+static
 HVL_Range * HVL_alloc_range(const size_t count)
 {
 	HVL_Range *pv;
@@ -453,6 +523,7 @@ HVL_Range * HVL_alloc_range(const size_t count)
 	return pv;
 }
 
+static
 size_t GetNumCPUs()
 {
 #ifdef LIBHVL_PLATFORM_WIN32
@@ -470,6 +541,7 @@ size_t GetNumCPUs()
  *
  * @return Number of threads to use for calculation
  */
+static
 size_t GetNumThreads(const size_t arraySize)
 {
 #ifdef LIBHVL_USE_CPP17
@@ -502,6 +574,7 @@ void ThreadCleanup(void *arg)
  *
  * @param arg Pointer to ThreadParams struct
  */
+static
 #ifdef LIBHVL_THREADING_WIN32
 DWORD WINAPI WorkerFunc(void *arg)
 #elif defined LIBHVL_THREADING_PTHREAD
@@ -555,11 +628,12 @@ void *WorkerFunc(void *arg)
  *
  * @return True on success, false on failure
  */
-bool LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double from, double to, double step, double a0, double a1, double a2, double a3, fpcalcfun calcfun)
+static
+HVL_RetCode LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double from, double to, double step, double a0, double a1, double a2, double a3, fpcalcfun calcfun)
 {
 	HVL_THREAD *threads;
 	ThreadParams *tps = nullptr;
-	bool bret;
+	HVL_RetCode tRet;
 	size_t idx;
 	HVL_Pair *buffer;
 #ifdef LIBHVL_THREADING_WIN32
@@ -571,7 +645,7 @@ bool LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double from, d
 #endif // LIBHVL_THREADING_
 	const size_t count = (size_t)floor(((to - from) / step) + 0.5);
 	if (count < 1)
-		return false;
+		return HVL_E_INVALID_ARG;
 
 	const size_t numThreads = GetNumThreads(count);
 	const size_t itersPerThread = count / numThreads;
@@ -579,27 +653,27 @@ bool LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double from, d
 	try {
 		threads = new HVL_THREAD[numThreads];
 	} catch (std::bad_alloc&) {
-		return false;
+		return HVL_E_NO_MEMORY;
 	}
 #ifdef LIBHVL_THREADING_WIN32
 	try {
 		threadIDs = new DWORD[numThreads];
 	} catch (std::bad_alloc&) {
 		delete[] threads;
-		return false;
+		return HVL_E_NO_MEMORY;
 	}
 #endif // LIBHVL_THREADING_WIN32
 
 	try {
 		tps = new ThreadParams[numThreads];
 	} catch (std::bad_alloc&) {
-		bret = false;
+		tRet = HVL_E_NO_MEMORY;
 		goto out;
 	}
 
 	*pv = HVL_alloc_range(count);
 	if (*pv == nullptr) {
-		bret = false;
+		tRet = HVL_E_NO_MEMORY;
 		goto out;
 	}
 
@@ -620,6 +694,7 @@ bool LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double from, d
 	/* Make an adjustment for the last thread */
 	tps[numThreads - 1].iters = count - (itersPerThread * (numThreads - 1)); /* Make sure that we do not leave out anything due to rounding */
 
+	MPFR_TRY_BEG
 	/* Launch threads */
 	for (idx = 0; idx < numThreads; idx++) {
 	#ifdef LIBHVL_THREADING_WIN32
@@ -638,30 +713,60 @@ bool LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double from, d
 	for (idx = 0; idx < numThreads; idx++)
 		CloseHandle(threads[idx]);
 #elif defined LIBHVL_THREADING_PTHREAD
-	for (size_t idx = 0; idx < numThreads; idx++)
-		pthread_join(threads[idx], NULL);
+	{
+		struct timespec ts;
+		ts.tv_sec = 1;
+		ts.tv_nsec = 0;
+
+		size_t thrIdx = 0;
+
+		while (thrIdx < numThreads) {
+			const auto jRet = pthread_timedjoin_np(threads[thrIdx], NULL, &ts);
+			if (mpfr_assert_triggered)
+				goto err_unwind;
+			if (jRet == 0)
+				thrIdx++;
+		}
+	}
 #endif // LIBHVL_THREADING_
-	bret = true;
+	MPFR_TRY_END
+	MPFR_CATCH_BEG
+	goto err_unwind;
+	MPFR_CATCH_END
+
+	tRet = HVL_OK;
 	goto out;
 
 /* Something went wrong when we were starting the workers, terminate
    all workers that might have been started and exit */
 err_unwind:
-	bret = false;
+	if (mpfr_assert_triggered) {
+		/* We are NOT reinstalling the original SIGABRT handler as some other threads
+		 * that are still running may trigger the assert too and kill the whole program.
+		 * In this case it should be the responsibility of the caller to reinstall
+		 * the original SIGABRT handler should it need to.
+		 * On the other hand a program that runs into this kind of MPFR exception
+		 * should not try to do anything else but log what happened and terminate immediately.
+		 * Safe recovery from this state is NOT POSSIBLE, do not even try!
+		 */
+		return HVL_E_MPFR_ASSERT;
+	}
+
+	tRet = HVL_E_INTERNAL;
 	for (;;) {
 	#ifdef LIBHVL_THREADING_WIN32
-		TerminateThread(threads[idx], WAIT_OBJECT_0);
-		CloseHandle(threads[idx]);
+		TerminateThread(threads[idx - 1], WAIT_OBJECT_0);
+		CloseHandle(threads[idx - 1]);
 	#elif defined LIBHVL_THREADING_PTHREAD
 		int _ret;
 		void *retval;
 
-		pthread_cancel(threads[idx]);
-		_ret = pthread_join(threads[idx], &retval);
+		pthread_cancel(threads[idx - 1]);
+		_ret = pthread_join(threads[idx - 1], &retval);
 		if (_ret)
 			abort();  /* Something has gone very wrong when killing the thread */
 	#endif // LIBHVL_THREADING_
-		if (idx == 0)
+		if (idx == 1)
 			break;
 		else
 			idx--;
@@ -675,7 +780,7 @@ out:
 	delete[] threadIDs;
 #endif // LIBHVL_THREADING_WIN32
 
-	return bret;
+	return tRet;
 }
 
 HVL_Context * MakeHVLContext(const int prec_bits)
@@ -799,105 +904,222 @@ HVL_prepare(HVL_Prepared **prep, const HVL_Context *ctx, const double x, const d
 	return HVL_OK;
 }
 
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL
-HVL_t_prepared(const HVL_Prepared *prep)
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_t_prepared(double *t, const HVL_Prepared *prep)
 {
 	CheckPrecision(&prep->ctx);
-	return HVL_t_internal(&prep->ctx, prep->a0, prep->a3, prep->gauss_base, prep->b1pb2, prep->reca3);
+
+	HVL_RetCode ret;
+	MPFR_TRY_BEG
+		*t = HVL_t_internal(&prep->ctx, prep->a0, prep->a3, prep->gauss_base, prep->b1pb2, prep->reca3);
+		ret = HVL_OK;
+	MPFR_TRY_END
+	MPFR_CATCH_BEG
+		ret = HVL_E_MPFR_ASSERT;
+	MPFR_CATCH_END
+
+	return ret;
 }
 
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL
-HVL_dx_prepared(const HVL_Prepared *prep)
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_dx_prepared(double *dx, const HVL_Prepared *prep)
 {
 	CheckPrecision(&prep->ctx);
-	return HVL_dx_internal(&prep->ctx, prep->a0, prep->a2, prep->a3,
-			       prep->gauss_base, prep->b1pb2, prep->reca3, prep->nmr, prep->xmu);
+
+	HVL_RetCode ret;
+	MPFR_TRY_BEG
+		*dx = HVL_dx_internal(&prep->ctx, prep->a0, prep->a2, prep->a3,
+				      prep->gauss_base, prep->b1pb2, prep->reca3, prep->nmr, prep->xmu);
+		ret = HVL_OK;
+	MPFR_TRY_END
+	MPFR_CATCH_BEG
+		ret = HVL_E_MPFR_ASSERT;
+	MPFR_CATCH_END
+
+	return ret;
 }
 
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL
-HVL_da0_prepared(const HVL_Prepared *prep)
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_da0_prepared(double *da0, const HVL_Prepared *prep)
 {
 	CheckPrecision(&prep->ctx);
-	return HVL_da0_internal(&prep->ctx, prep->a3, prep->gauss_base, prep->b1pb2, prep->reca3);
+
+	HVL_RetCode ret;
+	MPFR_TRY_BEG
+		*da0 = HVL_da0_internal(&prep->ctx, prep->a3, prep->gauss_base, prep->b1pb2, prep->reca3);
+		ret = HVL_OK;
+	MPFR_TRY_END
+	MPFR_CATCH_BEG
+		ret = HVL_E_MPFR_ASSERT;
+	MPFR_CATCH_END
+
+	return ret;
 }
 
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL
-HVL_da1_prepared(const HVL_Prepared *prep)
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_da1_prepared(double *da1,const HVL_Prepared *prep)
 {
 	CheckPrecision(&prep->ctx);
-	return HVL_da1_internal(&prep->ctx,
-			        prep->a0, prep->a2, prep->a3,
-				prep->gauss_base, prep->b1pb2, prep->reca3, prep->nmr, prep->xmu);
+
+	HVL_RetCode ret;
+	MPFR_TRY_BEG
+		*da1 = HVL_da1_internal(&prep->ctx,
+				        prep->a0, prep->a2, prep->a3,
+					prep->gauss_base, prep->b1pb2, prep->reca3, prep->nmr, prep->xmu);
+		ret = HVL_OK;
+	MPFR_TRY_END
+	MPFR_CATCH_BEG
+		ret = HVL_E_MPFR_ASSERT;
+	MPFR_CATCH_END
+
+	return ret;
 }
 
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL
-HVL_da2_prepared(const HVL_Prepared *prep)
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_da2_prepared(double *da2, const HVL_Prepared *prep)
 {
 	CheckPrecision(&prep->ctx);
-	return HVL_da2_internal(&prep->ctx,
-				prep->a0, prep->a2, prep->a3,
-				prep->gauss_base, prep->b1pb2, prep->reca3, prep->nmr, prep->xmu);
+
+	HVL_RetCode ret;
+	MPFR_TRY_BEG
+		*da2 =  HVL_da2_internal(&prep->ctx,
+					 prep->a0, prep->a2, prep->a3,
+					 prep->gauss_base, prep->b1pb2, prep->reca3, prep->nmr, prep->xmu);
+		ret = HVL_OK;
+	MPFR_TRY_END
+	MPFR_CATCH_BEG
+		ret = HVL_E_MPFR_ASSERT;
+	MPFR_CATCH_END
+
+	return ret;
 }
 
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL
-HVL_da3_prepared(const HVL_Prepared *prep)
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_da3_prepared(double *da3, const HVL_Prepared *prep)
 {
 	CheckPrecision(&prep->ctx);
-	return HVL_da3_internal(&prep->ctx,
-				prep->a0, prep->a3,
-				prep->gauss_base, prep->b1pb2, prep->reca3, prep->sqrtz);
+
+	HVL_RetCode ret;
+	MPFR_TRY_BEG
+		*da3 =  HVL_da3_internal(&prep->ctx,
+					 prep->a0, prep->a3,
+					 prep->gauss_base, prep->b1pb2, prep->reca3, prep->sqrtz);
+		ret = HVL_OK;
+	MPFR_TRY_END
+	MPFR_CATCH_BEG
+		ret = HVL_E_MPFR_ASSERT;
+	MPFR_CATCH_END
+
+	return ret;
 }
 
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL
-HVL_t(const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3)
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_t(double *t, const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3)
 {
 	CheckPrecision(ctx);
 
-	return HVL_t_oneshot(ctx, x, a0, a1, a2, a3);
+	HVL_RetCode ret;
+	MPFR_TRY_BEG
+		*t = HVL_t_oneshot(ctx, x, a0, a1, a2, a3);
+		ret = HVL_OK;
+	MPFR_TRY_END
+	MPFR_CATCH_BEG
+		ret = HVL_E_MPFR_ASSERT;
+	MPFR_CATCH_END
+
+	return ret;
 }
 
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL
-HVL_dx(const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3)
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_dx(double *dx, const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3)
 {
 	CheckPrecision(ctx);
 
-	return HVL_dx_oneshot(ctx, x, a0, a1, a2, a3);
+	HVL_RetCode ret;
+	MPFR_TRY_BEG
+		*dx = HVL_dx_oneshot(ctx, x, a0, a1, a2, a3);
+		ret = HVL_OK;
+	MPFR_TRY_END
+	MPFR_CATCH_BEG
+		ret = HVL_E_MPFR_ASSERT;
+	MPFR_CATCH_END
+
+	return ret;
 }
 
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL
-HVL_da0(const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3)
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_da0(double *da0, const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3)
 {
 	CheckPrecision(ctx);
 
-	return HVL_da0_oneshot(ctx, x, a0, a1, a2, a3);
+	HVL_RetCode ret;
+	MPFR_TRY_BEG
+		*da0 = HVL_da0_oneshot(ctx, x, a0, a1, a2, a3);
+		ret = HVL_OK;
+	MPFR_TRY_END
+	MPFR_CATCH_BEG
+		ret = HVL_E_MPFR_ASSERT;
+	MPFR_CATCH_END
+
+	return ret;
 }
 
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL
-HVL_da1(const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3)
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_da1(double *da1, const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3)
 {
 	CheckPrecision(ctx);
 
-	return HVL_da1_oneshot(ctx, x, a0, a1, a2, a3);
+	HVL_RetCode ret;
+	MPFR_TRY_BEG
+		*da1 = HVL_da1_oneshot(ctx, x, a0, a1, a2, a3);
+		ret = HVL_OK;
+	MPFR_TRY_END
+	MPFR_CATCH_BEG
+		ret = HVL_E_MPFR_ASSERT;
+	MPFR_CATCH_END
+
+	return ret;
 }
 
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL
-HVL_da2(const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3)
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_da2(double *da2, const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3)
 {
 	CheckPrecision(ctx);
 
-	return HVL_da2_oneshot(ctx, x, a0, a1, a2, a3);
+	HVL_RetCode ret;
+	MPFR_TRY_BEG
+		*da2 = HVL_da2_oneshot(ctx, x, a0, a1, a2, a3);
+		ret = HVL_OK;
+	MPFR_TRY_END
+	MPFR_CATCH_BEG
+		ret = HVL_E_MPFR_ASSERT;
+	MPFR_CATCH_END
+
+	return ret;
 }
 
 
-LIBHVL_DLLEXPORT double LIBHVL_DLLCALL
-HVL_da3(const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3)
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_da3(double *da3, const HVL_Context *ctx, const double x, const double a0, const double a1, const double a2, const double a3)
 {
-	return HVL_da3_oneshot(ctx, x, a0, a1, a2, a3);
+	CheckPrecision(ctx);
+
+	HVL_RetCode ret;
+	MPFR_TRY_BEG
+		*da3 = HVL_da3_oneshot(ctx, x, a0, a1, a2, a3);
+		ret = HVL_OK;
+	MPFR_TRY_END
+	MPFR_CATCH_BEG
+		ret = HVL_E_MPFR_ASSERT;
+	MPFR_CATCH_END
+
+	return ret;
 }
 
 /*
  * @brief Calculate values of HVL function for a given range of X
  *
+ * @param[in,out] rng Range of computed values
  * @param[in] ctx Calculation context
  * @param[in] from Value of X to calculate from
  * @param[in] to Value of X to calculate to
@@ -909,22 +1131,24 @@ HVL_da3(const HVL_Context *ctx, const double x, const double a0, const double a1
  *
  * @return Pointer to HVLInternalValues struct, NULL on failure
  */
-LIBHVL_DLLEXPORT HVL_Range * LIBHVL_DLLCALL
-HVL_t_range(const HVL_Context *ctx, const double from, const double to, const double step,
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_t_range(HVL_Range **rng, const HVL_Context *ctx, const double from, const double to, const double step,
 	    const double a0, const double a1, const double a2, const double a3)
 {
-	HVL_Range *r = nullptr;
+	*rng = nullptr;
 	if (to <= from)
-		return nullptr;
+		return HVL_E_INVALID_ARG;
 
-	if (LaunchWorkersAndWait(&r, ctx, from, to, step, a0, a1, a2, a3, HVL_t_oneshot) == false)
-		return nullptr;
-	return r;
+	HVL_RetCode ret = LaunchWorkersAndWait(rng, ctx, from, to, step, a0, a1, a2, a3, HVL_t_oneshot);
+	if (ret != HVL_OK)
+		HVL_free_range(*rng);
+	return ret;
 }
 
 /*
 * @brief Calculate values of HVL/dx function for a given range of X
 *
+ * @param[in,out] rng Range of computed values
  * @param[in] ctx Calculation context
  * @param[in] from Value of X to calculate from
  * @param[in] to Value of X to calculate to
@@ -936,22 +1160,24 @@ HVL_t_range(const HVL_Context *ctx, const double from, const double to, const do
  *
  * @return Pointer to HVLInternalValues struct, NULL on failure
  */
-LIBHVL_DLLEXPORT HVL_Range * LIBHVL_DLLCALL
-HVL_dx_range(const HVL_Context *ctx, const double from, const double to, const double step,
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_dx_range(HVL_Range **rng, const HVL_Context *ctx, const double from, const double to, const double step,
 	     const double a0, const double a1, const double a2, const double a3)
 {
-	HVL_Range *r = nullptr;
+	*rng = nullptr;
 	if (to <= from)
-		return nullptr;
+		return HVL_E_INVALID_ARG;
 
-	if (LaunchWorkersAndWait(&r, ctx, from, to, step, a0, a1, a2, a3, HVL_dx_oneshot) == false)
-		return nullptr;
-	return r;
+	HVL_RetCode ret = LaunchWorkersAndWait(rng, ctx, from, to, step, a0, a1, a2, a3, HVL_dx_oneshot);
+	if (ret != HVL_OK)
+		HVL_free_range(*rng);
+	return ret;
 }
 
 /*
  * @brief Calculate values of HVL/da0 function for a given range of X
  *
+ * @param[in,out] rng Range of computed values
  * @param[in] ctx Calculation context
  * @param[in] from Value of X to calculate from
  * @param[in] to Value of X to calculate to
@@ -963,22 +1189,24 @@ HVL_dx_range(const HVL_Context *ctx, const double from, const double to, const d
  *
  * @return Pointer to HVLInternalValues struct, NULL on failure
  */
-LIBHVL_DLLEXPORT HVL_Range * LIBHVL_DLLCALL
-HVL_da0_range(const HVL_Context *ctx, const double from, const double to, const double step,
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_da0_range(HVL_Range **rng, const HVL_Context *ctx, const double from, const double to, const double step,
 	      const double a0, const double a1, const double a2, const double a3)
 {
-	HVL_Range *r = nullptr;
+	*rng = nullptr;
 	if (to <= from)
-		return nullptr;
+		return HVL_E_INVALID_ARG;
 
-	if (LaunchWorkersAndWait(&r, ctx,  from, to, step, a0, a1, a2, a3, HVL_da0_oneshot) == false)
-		return nullptr;
-	return r;
+	HVL_RetCode ret = LaunchWorkersAndWait(rng, ctx,  from, to, step, a0, a1, a2, a3, HVL_da0_oneshot);
+	if (ret != HVL_OK)
+		HVL_free_range(*rng);
+	return ret;
 }
 
 /*
  * @brief Calculate values of HVL/da1 function for a given range of X
  *
+ * @param[in,out] rng Range of computed values
  * @param[in] ctx Calculation context
  * @param[in] from Value of X to calculate from
  * @param[in] to Value of X to calculate to
@@ -990,22 +1218,24 @@ HVL_da0_range(const HVL_Context *ctx, const double from, const double to, const 
  *
  * @return Pointer to HVLInternalValues struct, NULL on failure
  */
-LIBHVL_DLLEXPORT HVL_Range * LIBHVL_DLLCALL
-HVL_da1_range(const HVL_Context *ctx, const double from, const double to, const double step,
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_da1_range(HVL_Range **rng, const HVL_Context *ctx, const double from, const double to, const double step,
 	      const double a0, const double a1, const double a2, const double a3)
 {
-	HVL_Range *r = nullptr;
+	*rng = nullptr;
 	if (to <= from)
-		return nullptr;
+		return HVL_E_INVALID_ARG;
 
-	if (LaunchWorkersAndWait(&r, ctx, from, to, step, a0, a1, a2, a3, HVL_da1_oneshot) == false)
-		return nullptr;
-	return r;
+	HVL_RetCode ret = LaunchWorkersAndWait(rng, ctx, from, to, step, a0, a1, a2, a3, HVL_da1_oneshot);
+	if (ret != HVL_OK)
+		HVL_free_range(*rng);
+	return ret;
 }
 
 /*
  * @brief Calculate values of HVL/da2 function for a given range of X
  *
+ * @param[in,out] rng Range of computed values
  * @param[in] ctx Calculation context
  * @param[in] from Value of X to calculate from
  * @param[in] to Value of X to calculate to
@@ -1017,22 +1247,24 @@ HVL_da1_range(const HVL_Context *ctx, const double from, const double to, const 
  *
  * @return Pointer to HVLInternalValues struct, NULL on failure
  */
-LIBHVL_DLLEXPORT HVL_Range * LIBHVL_DLLCALL
-HVL_da2_range(const HVL_Context *ctx, const double from, const double to, const double step,
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_da2_range(HVL_Range **rng, const HVL_Context *ctx, const double from, const double to, const double step,
 	      const double a0, const double a1, const double a2, const double a3)
 {
-	HVL_Range *r = nullptr;
+	*rng = nullptr;
 	if (to <= from)
-		return nullptr;
+		return HVL_E_INVALID_ARG;
 
-	if (LaunchWorkersAndWait(&r, ctx, from, to, step, a0, a1, a2, a3, HVL_da2_oneshot) == false)
-		return nullptr;
-	return r;
+	HVL_RetCode ret = LaunchWorkersAndWait(rng, ctx, from, to, step, a0, a1, a2, a3, HVL_da2_oneshot);
+	if (ret != HVL_OK)
+		HVL_free_range(*rng);
+	return ret;
 }
 
 /*
  * @brief Calculate values of HVL/da3 function for a given range of X
  *
+ * @param[in,out] rng Range of computed values
  * @param[in] ctx Calculation context
  * @param[in] from Value of X to calculate from
  * @param[in] to Value of X to calculate to
@@ -1044,17 +1276,18 @@ HVL_da2_range(const HVL_Context *ctx, const double from, const double to, const 
  *
  * @return Pointer to HVLInternalValues struct, NULL on failure
  */
-LIBHVL_DLLEXPORT HVL_Range * LIBHVL_DLLCALL
-HVL_da3_range(const HVL_Context *ctx, const double from, const double to, const double step,
+LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
+HVL_da3_range(HVL_Range **rng, const HVL_Context *ctx, const double from, const double to, const double step,
 	      const double a0, const double a1, const double a2, const double a3)
 {
-	HVL_Range *r = nullptr;
+	*rng = nullptr;
 	if (to <= from)
-		return nullptr;
+		return HVL_E_INVALID_ARG;
 
-	if (LaunchWorkersAndWait(&r, ctx, from, to, step, a0, a1, a2, a3, HVL_da3_oneshot) == false)
-		return nullptr;
-	return r;
+	HVL_RetCode ret = LaunchWorkersAndWait(rng, ctx, from, to, step, a0, a1, a2, a3, HVL_da3_oneshot);
+	if (ret != HVL_OK)
+		HVL_free_range(*rng);
+	return ret;
 }
 
 #ifdef __cplusplus
