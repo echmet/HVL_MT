@@ -196,10 +196,10 @@ void mpfr_assertion_failed_handler(int, siginfo_t *, void *)
 
 #else
 
-#define MPFR_TRY_BEG
-#define MPFR_TRY_END
-#define MPFR_CATCH_BEG
-#define MPFR_CATCH_END
+#define MPFR_TRY_BEG {
+#define MPFR_TRY_END }
+#define MPFR_CATCH_BEG {
+#define MPFR_CATCH_END }
 
 static bool mpfr_assert_triggered{false};
 
