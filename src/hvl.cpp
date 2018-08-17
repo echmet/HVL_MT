@@ -99,25 +99,26 @@ inline hvl_float Sqrt(const hvl_float &x)
 	#define CURRENT_THREAD_ID GetCurrentThreadId
 #endif // LIBHVL_THREADING_
 
-#ifdef _WIN32
-	typedef _invalid_parameter_handler sighandler_t;
-	#define SET_EXCEPTION_HANDLER(handler) _set_invalid_parameter_handler(handler)
-#else
-	typedef void (*sighandler_t)(int);
-	#define SET_EXCEPTION_HANDLER(handler) std::signal(SIGABRT, handler)
-#endif // _WIN32
-
 static jmp_buf env;
 static thread_id_t mpfr_failure_parent_thread_id;
 static std::mutex mpfr_assert_handler_mtx;
-static sighandler_t mpfr_prev_handler;
+#ifndef _WIN32
+typedef void (*abrthandler_t)(int, siginfo_t *, void *);
+
+struct sigaction mpfr_crashAction;
+struct sigaction mpfr_origAction;
+#else
+typedef _invalid_parameter_handler sighandler_t;
+
+static abrthandler_t mpfr_prev_handler;
+#endif // _WIN32
 static volatile bool mpfr_assert_triggered;
 
 static
 #ifdef _WIN32
 void __cdecl mpfr_assertion_failed_handler(const wchar_t *, const wchar_t *, const wchar_t *, unsigned int, uintptr_t)
 #else
-void mpfr_assertion_failed_handler(int)
+void mpfr_assertion_failed_handler(int, siginfo_t *, void *)
 #endif // _WIN32
 {
 	mpfr_assert_handler_mtx.lock();
@@ -130,10 +131,8 @@ void mpfr_assertion_failed_handler(int)
 	}
 
 	if (mpfr_assert_triggered) {
-		/* This is a second call to this handler from the main thread.
-		 * Assume that the caller wants to abort();
-		 */
 		mpfr_assert_handler_mtx.unlock();
+		THREAD_SLEEP(5);
 		return;
 	}
 
@@ -144,14 +143,49 @@ void mpfr_assertion_failed_handler(int)
 	longjmp(env, 1);
 }
 
+
+#ifdef _WIN32
+
+	static
+	void install_abort_handler(abrthandler_t handler)
+	{
+		mpfr_prev_handler = _set_invalid_parameter_handler(handler)
+	}
+
+	static
+	void restore_abort_handler()
+	{
+		_set_invalid_parameter_handler(mpfr_prev_handler);
+	}
+#else
+	static
+	void install_abort_handler(abrthandler_t handler)
+	{
+		memset(&mpfr_crashAction, 0, sizeof(struct sigaction));
+		memset(&mpfr_origAction, 0, sizeof(struct sigaction));
+		sigemptyset(&mpfr_crashAction.sa_mask);
+		sigaddset(&mpfr_crashAction.sa_mask, SIGABRT);
+
+		mpfr_crashAction.sa_flags = SA_SIGINFO;
+		mpfr_crashAction.sa_sigaction = handler;
+		sigaction(SIGABRT, &mpfr_crashAction, &mpfr_origAction);
+	}
+
+	static
+	void restore_abort_handler()
+	{
+		sigaction(SIGABRT, &mpfr_origAction, nullptr);
+	}
+#endif // _WIN32
+
 #define MPFR_TRY_BEG \
 	if (!setjmp(env)) { \
 		mpfr_failure_parent_thread_id = CURRENT_THREAD_ID(); \
-		mpfr_prev_handler = SET_EXCEPTION_HANDLER(mpfr_assertion_failed_handler); \
+		install_abort_handler(mpfr_assertion_failed_handler); \
 		mpfr_assert_triggered = false;
 
 #define MPFR_TRY_END \
-		SET_EXCEPTION_HANDLER(mpfr_prev_handler); \
+		restore_abort_handler(); \
 	}
 
 #define MPFR_CATCH_BEG \
@@ -895,7 +929,7 @@ HVL_free_threadlocal_cache()
  * @return HVL_OK on success, error code otherwise
  */
 LIBHVL_DLLEXPORT HVL_RetCode LIBHVL_DLLCALL
-HVL_make_context (HVL_Context **ctx, const int prec)
+HVL_make_context(HVL_Context **ctx, const int prec)
 {
 	#ifndef LIBHVL_USE_MPFR
 		(void)prec;
