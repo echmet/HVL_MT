@@ -9,6 +9,7 @@ else ()
 endif ()
 option(USE_CPP17 "Take advantage of C++17 features" OFF)
 option(USE_MPFR "Use MPFR high precision library" OFF)
+option(CATCH_MPFR_ASSERTS "Try to catch any failed assertions in MPFR library - this will make the library thread-unsafe" OFF)
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR})
 add_definitions("-DLIBHVL_DLLBUILD")
@@ -31,6 +32,10 @@ if(UNIX)
       ${MPFR_INCLUDES})
     set(LINK_HIPREC
         ${MPFR_LIBRARIES})
+
+    if (CATCH_MPFR_ASSERTS)
+        add_definitions("-DLIBHVL_CATCH_MPFR_ASSERTS")
+    endif ()
   else()
     include_directories(
       ${LIBHVL_INCLUDES})
@@ -60,6 +65,10 @@ elseif(WIN32)
         ${GMP_LIBRARY_BIN})
     set(LINK_HIPREC ${LINK_HIPREC}
         ${MPFR_LIBRARY_BIN})
+
+    if (CATCH_MPFR_ASSERTS)
+        add_definitions("-DLIBHVL_CATCH_MPFR_ASSERTS")
+    endif ()
   else()
     include_directories(
       ${LIBHVL_INCLUDES})

@@ -99,6 +99,8 @@ inline hvl_float Sqrt(const hvl_float &x)
 	#define CURRENT_THREAD_ID GetCurrentThreadId
 #endif // LIBHVL_THREADING_
 
+#ifdef LIBHVL_CATCH_MPFR_ASSERTS
+
 static jmp_buf env;
 static thread_id_t mpfr_failure_parent_thread_id;
 static std::mutex mpfr_assert_handler_mtx;
@@ -194,6 +196,8 @@ void mpfr_assertion_failed_handler(int, siginfo_t *, void *)
 	}
 
 #else
+
+#endif // LIBHVL_CATCH_MPFR_ASSERTS
 
 #define MPFR_TRY_BEG
 #define MPFR_TRY_END
