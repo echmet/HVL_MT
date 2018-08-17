@@ -110,7 +110,7 @@ typedef void (*abrthandler_t)(int, siginfo_t *, void *);
 struct sigaction mpfr_crashAction;
 struct sigaction mpfr_origAction;
 #else
-typedef _invalid_parameter_handler sighandler_t;
+typedef _invalid_parameter_handler abrthandler_t;
 
 static abrthandler_t mpfr_prev_handler;
 #endif // _WIN32
@@ -147,11 +147,10 @@ void mpfr_assertion_failed_handler(int, siginfo_t *, void *)
 
 
 #ifdef _WIN32
-
 	static
 	void install_abort_handler(abrthandler_t handler)
 	{
-		mpfr_prev_handler = _set_invalid_parameter_handler(handler)
+		mpfr_prev_handler = _set_invalid_parameter_handler(handler);
 	}
 
 	static
@@ -197,8 +196,6 @@ void mpfr_assertion_failed_handler(int, siginfo_t *, void *)
 
 #else
 
-#endif // LIBHVL_CATCH_MPFR_ASSERTS
-
 #define MPFR_TRY_BEG
 #define MPFR_TRY_END
 #define MPFR_CATCH_BEG
@@ -206,7 +203,9 @@ void mpfr_assertion_failed_handler(int, siginfo_t *, void *)
 
 static bool mpfr_assert_triggered{false};
 
-#endif
+#endif  // LIBHVL_CATCH_MPFR_ASSERTS
+
+#endif // LIBHVL_USE_MPFR
 
 /** Internal data types */
 struct HVL_Context {
