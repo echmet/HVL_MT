@@ -2,7 +2,11 @@ cmake_minimum_required(VERSION 2.8.12)
 
 project(libhvl_mt)
 
-option(WIN32_THREADS "Use Win32 threads instead of pthreads" OFF)
+if (WIN32)
+    option(WIN32_THREADS "Use Win32 threads instead of pthreads" ON)
+else ()
+    option(WIN32_THREADS "Use Win32 threads instead of pthreads" OFF)
+endif ()
 option(USE_CPP17 "Take advantage of C++17 features" OFF)
 option(USE_MPFR "Use MPFR high precision library" OFF)
 
