@@ -770,6 +770,19 @@ HVL_RetCode LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double 
 	#endif // LIBHVL_THREADING_
 	}
 
+#ifdef LIBHVL_CATCH_MPFR_ASSERTS
+
+#ifdef LIBHVL_THREADING_WIN32
+	WaitForMultipleObjects(numThreads, threads, TRUE, INFINITE);
+	for (idx = 0; idx < numThreads; idx++)
+		CloseHandle(threads[idx]);
+#elif defined LIBHVL_THREADING_PTHREAD
+	for (size_t idx = 0; idx < numThreads; idx++)
+		pthread_join(threads[idx], NULL);
+#endif // LIBHVL_THREADING_
+
+#else
+
 #ifdef LIBHVL_THREADING_WIN32
 	{
 		size_t thrIdx = 0;
@@ -785,12 +798,7 @@ HVL_RetCode LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double 
 		}
 	}
 #elif defined LIBHVL_THREADING_PTHREAD
-	#ifdef _WIN32
-		for (size_t idx = 0; idx < numThreads; idx++)
-			pthread_join(threads[idx], NULL);
-	#else
 	{
-
 		struct timespec ts;
 		ts.tv_sec = 0;
 		ts.tv_nsec = 50000000;
@@ -805,8 +813,9 @@ HVL_RetCode LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double 
 				thrIdx++;
 		}
 	}
-	#endif // _WIN32
 #endif // LIBHVL_THREADING_
+#endif // LIBHVL_CATCH_MPFR_ASSERTS
+
 	MPFR_TRY_END
 	MPFR_CATCH_BEG
 	goto err_unwind;
