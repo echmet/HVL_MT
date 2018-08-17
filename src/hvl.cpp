@@ -748,7 +748,12 @@ HVL_RetCode LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double 
 		}
 	}
 #elif defined LIBHVL_THREADING_PTHREAD
+	#ifdef _WIN32
+		for (size_t idx = 0; idx < numThreads; idx++)
+			pthread_join(threads[idx], NULL);
+	#else
 	{
+
 		struct timespec ts;
 		ts.tv_sec = 0;
 		ts.tv_nsec = 50000000;
@@ -763,6 +768,7 @@ HVL_RetCode LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double 
 				thrIdx++;
 		}
 	}
+	#endif // _WIN32
 #endif // LIBHVL_THREADING_
 	MPFR_TRY_END
 	MPFR_CATCH_BEG
