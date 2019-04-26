@@ -814,12 +814,12 @@ HVL_RetCode LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double 
 				goto err_unwind;
 			if (jRet == 0)
 				thrIdx++;
-			else if (jRet != ETIMEDOUT) {
+			else if (jRet != EBUSY) {
 				/* Something has gone very wrong during thread execution.
 				 * The only sane thing to do is to bail out */
 				abort();
 			} else
-				usleep(50000000);
+				usleep(50000);
 		}
 	}
 #endif // LIBHVL_THREADING_
