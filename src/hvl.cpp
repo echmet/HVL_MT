@@ -14,6 +14,7 @@
 	#include <windows.h>
 #elif defined LIBHVL_PLATFORM_UNIX
 	#include <sys/sysinfo.h>
+	#include <unistd.h>
 #endif // LIBHVL_PLATFORM_
 
 #ifdef LIBHVL_THREADING_PTHREAD
@@ -607,18 +608,21 @@ static
 size_t GetNumThreads(const size_t arraySize)
 {
 #ifdef LIBHVL_USE_CPP17
-	const int cacheLineSize = std::hardware_destructive_interference_size;
+	static const int cacheLineSize = std::hardware_destructive_interference_size;
 #else
-	const int cacheLineSize = 64; /* Assume 64-byte L1 cache line size */
+	static const int cacheLineSize = 64; /* Assume 64-byte L1 cache line size */
 #endif //LIBHVL_USE_CPP17
 	const size_t numCPU = GetNumCPUs();
 	const size_t maxChunks = arraySize * sizeof(double) / cacheLineSize;
 
 	if (maxChunks < 1)
 		return 1;
-	if (maxChunks < numCPU)
-		return maxChunks;
-	return numCPU;
+
+	const size_t numThreads = maxChunks < numCPU ? maxChunks : numCPU;
+
+	if (arraySize / numThreads < 1)
+		return 1;
+	return numThreads;
 }
 
 #ifdef LIBHVL_THREADING_PTHREAD
@@ -799,18 +803,23 @@ HVL_RetCode LaunchWorkersAndWait(HVL_Range **pv, const HVL_Context *ctx, double 
 	}
 #elif defined LIBHVL_THREADING_PTHREAD
 	{
-		struct timespec ts;
-		ts.tv_sec = 0;
-		ts.tv_nsec = 50000000;
-
 		size_t thrIdx = 0;
-
 		while (thrIdx < numThreads) {
-			const auto jRet = pthread_timedjoin_np(threads[thrIdx], NULL, &ts);
+#ifdef _GNU_SOURCE
+			const auto jRet = pthread_tryjoin_np(threads[thrIdx], NULL);
+#else
+			const auto jRet = pthread_join(threads[thrIdx], NULL);
+#endif // _GNU_SOURCE
 			if (mpfr_assert_triggered)
 				goto err_unwind;
 			if (jRet == 0)
 				thrIdx++;
+			else if (jRet != ETIMEDOUT) {
+				/* Something has gone very wrong during thread execution.
+				 * The only sane thing to do is to bail out */
+				abort();
+			} else
+				usleep(50000000);
 		}
 	}
 #endif // LIBHVL_THREADING_
