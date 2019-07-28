@@ -19,6 +19,7 @@
 
 #ifdef LIBHVL_THREADING_PTHREAD
 	#include <pthread.h>
+	#include <cerrno>
 #endif // LIBHVL_THREADING_PTHREAD
 
 /* Define float variable to appropriate type */
@@ -205,6 +206,15 @@ void mpfr_assertion_failed_handler(int, siginfo_t *, void *)
 static bool mpfr_assert_triggered{false};
 
 #endif  // LIBHVL_CATCH_MPFR_ASSERTS
+
+#else
+
+#define MPFR_TRY_BEG {
+#define MPFR_TRY_END }
+#define MPFR_CATCH_BEG while (false) {
+#define MPFR_CATCH_END }
+
+static bool mpfr_assert_triggered{false};
 
 #endif // LIBHVL_USE_MPFR
 
